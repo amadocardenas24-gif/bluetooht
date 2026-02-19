@@ -2,143 +2,134 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fulcanelli - Control de Sensor</title>
+    <title>SISTEMA DE MONITOREO CARDÍACO - VISUAL</title>
     <style>
-        body { background: #000; color: #00FF00; font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
-        .consola { border: 3px solid #00FF00; padding: 20px; background: #010; border-radius: 15px; box-shadow: 0 0 25px #0f0; display: inline-block; width: 95%; max-width: 600px; }
-        select { width: 100%; padding: 15px; background: #111; color: #0f0; border: 1px solid #0f0; margin-bottom: 15px; font-size: 1.1em; border-radius: 5px; }
-        #vumetro { width: 100%; height: 35px; background: #020; border: 1px solid #0f0; margin: 15px 0; border-radius: 8px; overflow: hidden; }
-        #barra { width: 0%; height: 100%; background: #0f0; transition: width 0.05s; }
-        .grid-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .btn { padding: 20px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; font-size: 1.1em; text-transform: uppercase; }
-        .btn-detectar { background: #FFD700; color: #000; grid-column: span 2; }
-        .btn-play { background: #006400; color: #fff; }
-        .btn-stop { background: #8B0000; color: #fff; }
-        .estado-panel { margin: 15px 0; padding: 10px; border: 1px solid #333; background: #000; font-size: 0.9em; }
+        body { background: #050000; color: #ff0000; font-family: 'Segoe UI', Arial, sans-serif; text-align: center; margin: 0; overflow: hidden; }
+        h1 { margin-top: 20px; font-weight: bold; letter-spacing: 3px; text-transform: uppercase; color: #ff0000; text-shadow: 0 0 10px #ff0000; }
+        #container { position: relative; width: 92%; height: 65vh; margin: 10px auto; background: #0a0000; border: 2px solid #440000; border-radius: 10px; box-shadow: inset 0 0 50px #220000; }
+        #visualizer { width: 100%; height: 100%; }
+        .dashboard { display: flex; justify-content: center; gap: 30px; margin: 15px; }
+        .panel { background: #150000; padding: 15px; border: 1px solid #660000; border-radius: 8px; min-width: 180px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .panel label { display: block; font-size: 11px; color: #aa0000; margin-bottom: 5px; font-weight: bold; }
+        .panel span { font-size: 38px; font-weight: bold; font-family: 'Courier New', monospace; color: #ff3333; }
+        button { padding: 15px 50px; font-size: 18px; cursor: pointer; background: #aa0000; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; box-shadow: 0 0 15px rgba(255,0,0,0.3); }
+        button:hover { background: #ff0000; box-shadow: 0 0 25px #ff0000; transform: scale(1.02); }
+        .status-bar { font-size: 13px; color: #00ff00; margin-top: 10px; font-family: monospace; }
     </style>
 </head>
 <body>
 
-    <div class="consola">
-        <h2>SISTEMA SENSORIAL FULCANELLI</h2>
-        
-        <button class="btn btn-detectar" onclick="inicializarHardware()">1. CARGAR AUDÍFONOS BLUETOOTH</button>
-        
-        <div class="estado-panel">
-            DISPOSITIVO: <select id="selectorMic"><option value="">(Presiona el botón amarillo)</option></select><br>
-            PROTOCOLO: <select id="selectorProtocolo">
-                <option value="0">ABDOMINAL INFLAMMATION</option>
-                <option value="1">ABSCESSES</option>
-                <option value="2">ACNE</option>
-                <option value="3">ADENOVIRUS</option>
-                <option value="4">ADENOVIRUS D</option>
-                <option value="5">ALLERGY</option>
-                <option value="6">ALS MAESTRO (COMPLETO)</option>
-            </select>
+    <h1>Monitoreo Escalar en Tiempo Real</h1>
+    
+    <div class="dashboard">
+        <div class="panel">
+            <label>IMPULSO CARDÍACO</label>
+            <span id="power">0</span>
         </div>
-
-        NIVEL DE MANÓMETRO (LEY DE WINTER):
-        <div id="vumetro"><div id="barra"></div></div>
-        
-        <div id="status" style="color: #FFD700; margin-bottom: 15px;">SISTEMA EN ESPERA</div>
-
-        <div class="grid-botones">
-            <button id="btn-play" class="btn btn-play" onclick="comenzarEscucha()">PLAY</button>
-            <button id="btn-stop" class="btn btn-stop" onclick="pararTodo()">STOP</button>
+        <div class="panel">
+            <label>SISTEMA WAKELOCK</label>
+            <span id="lockStatus">OFF</span>
         </div>
     </div>
 
+    <div id="container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <button id="startBtn">ACTIVAR MONITOR ROJO</button>
+    <div id="info" class="status-bar">MODO: SOLO VISUAL - SIN SALIDA DE AUDIO</div>
+
     <script>
-        let aCtx, analista, dataArray, streamGlobal;
+        let wakeLock = null;
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const powerDisplay = document.getElementById('power');
+        const lockStatus = document.getElementById('lockStatus');
 
-        // Base de datos de frecuencias extraídas de tus archivos
-        const PROTOCOLOS = [
-            { nombre: "Abdominal", freqs: [10000, 3176, 2720, 2489, 2170, 1865, 1800, 1600, 1550, 880, 832, 802, 787, 776, 727, 660, 465, 450, 444, 440, 428, 380, 146, 125, 95, 72, 20, 1.2] },
-            { nombre: "Abscesses", freqs: [10000, 3176, 7270, 2720, 2170, 880, 787, 727, 500, 190, 728] },
-            { nombre: "Acne", freqs: [10000, 3176, 2720, 2170, 1800, 1600, 1550, 1500, 802, 880, 778, 787, 760, 741, 727, 660, 564, 465, 450, 444, 428] },
-            { nombre: "Adenovirus", freqs: [10000, 3176, 962, 959, 786, 768, 666, 523, 333] },
-            { nombre: "Adenovirus D", freqs: [10000, 3176, 8875, 6140.25, 5859.37, 5796.87, 5218.75, 1289, 1161, 1032, 903, 774, 645, 516, 387, 258, 129] },
-            { nombre: "Allergy", freqs: [10000, 5000, 3176, 7344, 4412, 1550, 1234, 740, 880, 787, 727, 330, 3] },
-            { nombre: "ALS Maestro", freqs: [10000, 5000, 3176, 19180.5, 5148, 3773.3, 3767.3, 2213, 943.3, 941.8, 866, 840, 742.4, 624, 620, 471.66, 470.9, 430, 303, 23.2, 2900, 864, 790, 690, 610, 470, 484, 986, 644, 254, 3636, 2632, 1850, 1500, 1488, 1422, 1189, 1044, 922, 868, 845, 822, 788, 776, 766, 742, 733, 721, 676, 654, 625, 620, 607, 608, 609, 610, 611, 612, 613, 595, 515, 487, 461, 435, 423, 380, 322, 283, 232, 144, 136, 20] }
-        ];
-
-        async function inicializarHardware() {
+        async function activarWakeLock() {
             try {
-                // Solicitar permiso básico para "desbloquear" la lista
-                const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                tempStream.getTracks().forEach(t => t.stop());
-
-                const dispositivos = await navigator.mediaDevices.enumerateDevices();
-                const selector = document.getElementById('selectorMic');
-                selector.innerHTML = "";
-
-                dispositivos.filter(d => d.kind === 'audioinput').forEach(d => {
-                    const opt = document.createElement('option');
-                    opt.value = d.deviceId;
-                    opt.text = d.label || `Micrófono ${selector.length + 1}`;
-                    selector.appendChild(opt);
-                });
-
-                document.getElementById('status').innerText = "DISPOSITIVOS CARGADOS";
-                document.getElementById('status').style.color = "#0f0";
-            } catch (err) {
-                alert("ERROR DE SISTEMA: Debes permitir el micrófono en los ajustes del candado junto a la URL.");
-            }
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    lockStatus.innerText = "ON";
+                    lockStatus.style.color = "#00ff00";
+                }
+            } catch (err) { console.log("Bloqueo de pantalla no disponible"); }
         }
 
-        async function comenzarEscucha() {
-            const devId = document.getElementById('selectorMic').value;
-            if (!devId) return alert("Selecciona tus audífonos de la lista primero.");
-
+        document.getElementById('startBtn').addEventListener('click', async () => {
             try {
-                if (aCtx) aCtx.close();
-                aCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+                });
+
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
                 
-                // Configuración para Bluetooth
-                streamGlobal = await navigator.mediaDevices.getUserMedia({
-                    audio: { deviceId: { ideal: devId } }
-                });
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 18.0; // Ganancia alta para ver latidos débiles
 
-                const fuente = aCtx.createMediaStreamSource(streamGlobal);
-                analista = aCtx.createAnalyser();
-                analista.fftSize = 256;
-                dataArray = new Uint8Array(analista.frequencyBinCount);
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = "lowpass";
+                filter.frequency.value = 80; // Filtro estricto para latidos limpios
 
-                // Ganancia optimizada para sensor (x15)
-                const ganancia = aCtx.createGain();
-                ganancia.gain.value = 15.0;
+                source.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(analyser);
+                // No conectamos a destination para mantener el silencio
 
-                fuente.connect(ganancia);
-                ganancia.connect(analista);
-                ganancia.connect(aCtx.destination);
+                analyser.fftSize = 1024;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
 
-                document.getElementById('status').innerText = "MONITOREANDO SENSOR...";
-                actualizarVumetro();
-            } catch (err) {
-                alert("Error al conectar: " + err);
-            }
-        }
+                await activarWakeLock();
+                document.getElementById('startBtn').style.display = "none";
 
-        function pararTodo() {
-            if (streamGlobal) streamGlobal.getTracks().forEach(t => t.stop());
-            if (aCtx) aCtx.close();
-            document.getElementById('status').innerText = "STOP - SISTEMA DETENIDO";
-            document.getElementById('status').style.color = "#f00";
-            document.getElementById('barra').style.width = "0%";
-        }
+                function draw() {
+                    requestAnimationFrame(draw);
+                    analyser.getByteTimeDomainData(dataArray);
 
-        function actualizarVumetro() {
-            if (aCtx && aCtx.state !== 'closed') {
-                analista.getByteFrequencyData(dataArray);
-                let promedio = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                document.getElementById('barra').style.width = Math.min(100, (promedio * 3.5)) + "%";
-                requestAnimationFrame(actualizarVumetro);
-            }
-        }
+                    canvas.width = canvas.clientWidth;
+                    canvas.height = canvas.clientHeight;
 
-        // Mantener pantalla encendida
-        if ('wakeLock' in navigator) { navigator.wakeLock.request('screen').catch(() => {}); }
+                    // Fondo con rejilla médica oscura
+                    ctx.fillStyle = "#050000";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    ctx.strokeStyle = '#220000';
+                    ctx.lineWidth = 1;
+                    for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+                    for(let i=0; i<canvas.height; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+
+                    // Línea de la onda escalar roja
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#ff0000';
+                    ctx.beginPath();
+
+                    let sliceWidth = canvas.width * 1.0 / bufferLength;
+                    let x = 0;
+                    let maxVal = 0;
+
+                    for(let i = 0; i < bufferLength; i++) {
+                        let v = dataArray[i] / 128.0;
+                        let y = v * canvas.height / 2;
+                        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        x += sliceWidth;
+                        if(dataArray[i] > maxVal) maxVal = dataArray[i];
+                    }
+
+                    ctx.lineTo(canvas.width, canvas.height / 2);
+                    ctx.stroke();
+                    
+                    // Actualizar potencia numérica
+                    let currentPower = Math.max(0, maxVal - 128);
+                    powerDisplay.innerText = currentPower;
+                }
+                draw();
+            } catch (err) { alert("ERROR: Conecta los audífonos y acepta los permisos."); }
+        });
     </script>
 </body>
 </html>
