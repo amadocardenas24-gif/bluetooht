@@ -3,136 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SISTEMA FULCANELLI - CORRECCIÓN BLUETOOTH</title>
+    <title>SISTEMA FULCANELLI - ACCESO TOTAL</title>
     <style>
         body { background: #000; color: #00FF00; font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
-        .consola { border: 2px solid #00FF00; padding: 25px; background: #010; border-radius: 20px; box-shadow: 0 0 20px #0f0; }
+        .consola { border: 2px solid #00FF00; padding: 25px; background: #010; border-radius: 20px; }
         select { width: 100%; padding: 15px; background: #111; color: #0f0; border: 1px solid #0f0; margin-bottom: 20px; font-size: 1.1em; }
-        #vumetro { width: 100%; height: 35px; background: #020; border: 1px solid #0f0; margin: 15px 0; border-radius: 5px; position: relative; }
+        #vumetro { width: 100%; height: 35px; background: #020; border: 1px solid #0f0; margin: 15px 0; border-radius: 5px; }
         #barra { width: 0%; height: 100%; background: #0f0; transition: width 0.05s; }
-        .controles { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .btn { padding: 25px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; font-size: 1.2em; text-transform: uppercase; }
-        #btn-play { background: #006400; color: #fff; }
-        #btn-stop { background: #8B0000; color: #fff; }
-        .instruccion { color: #FFD700; font-size: 14px; margin-bottom: 15px; }
+        .btn-accion { padding: 25px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; font-size: 1.2em; width: 100%; margin: 10px 0; text-transform: uppercase; }
+        #btn-permiso { background: #FFD700; color: #000; }
+        #btn-play { background: #006400; color: #fff; display: none; }
+        #btn-stop { background: #8B0000; color: #fff; display: none; }
+        .instruccion { color: #FFD700; font-size: 14px; margin-bottom: 15px; border: 1px dashed #FFD700; padding: 10px; }
     </style>
 </head>
 <body>
 
     <h2>SENSOR SENSORIAL DE PRECISIÓN</h2>
-    <p class="instruccion">PASO 1: Presiona "DETECTAR" para ver tus audífonos.<br>PASO 2: Selecciónalos y presiona "ACTIVAR CANAL".</p>
-
-    <div class="consola">
-        <button class="btn" style="background: #333; color: #0f0; width: 100%; margin-bottom: 15px;" onclick="listarMicrofonos()">1. DETECTAR DISPOSITIVOS</button>
-        
-        <select id="listaDispositivos"><option value="">Selecciona tu Micrófono Bluetooth...</option></select>
-        
-        NIVEL DE SEÑAL (MANÓMETRO):
-        <div id="vumetro"><div id="barra"></div></div>
-        ESTADO: <span id="status" style="color: #f00;">APAGADO</span>
+    
+    <div id="guia" class="instruccion">
+        <strong>PASO CRÍTICO:</strong><br>
+        1. Presiona el botón amarillo para pedir permiso al sistema.<br>
+        2. Si aparece una ventana, dale a <strong>"PERMITIR"</strong>.<br>
+        3. Selecciona tus audífonos en la lista que aparecerá.
     </div>
 
-    <br>
-    <div class="controles">
-        <button id="btn-play" class="btn" onclick="activarAudio()">ACTIVAR CANAL</button>
-        <button id="btn-stop" class="btn" onclick="detenerAudio()">STOP</button>
+    <div class="consola">
+        <button id="btn-permiso" class="btn-accion" onclick="pedirPermisoMaestro()">1. SOLICITAR PERMISO DE HARDWARE</button>
+        
+        <select id="listaDispositivos" style="display:none;"><option value="">Seleccionando dispositivo...</option></select>
+        
+        <div id="display-señal" style="display:none;">
+            NIVEL DE SEÑAL (MANÓMETRO):
+            <div id="vumetro"><div id="barra"></div></div>
+            ESTADO: <span id="status" style="color: #0f0;">SISTEMA LISTO</span>
+        </div>
+
+        <button id="btn-play" class="btn-accion" onclick="activarCanal()">2. INICIAR ESCUCHA (PLAY)</button>
+        <button id="btn-stop" class="btn-accion" onclick="detenerSistema()">PARAR (STOP)</button>
     </div>
 
     <script>
-        let aCtx, analista, dataArray, streamLocal;
-        const selector = document.getElementById('listaDispositivos');
+        let audioContext, analista, dataArray, streamGlobal;
 
-        async function listarMicrofonos() {
+        async function pedirPermisoMaestro() {
             try {
-                // Pedimos permiso primero para que el navegador nos dé los nombres reales
-                const streamPrueba = await navigator.mediaDevices.getUserMedia({ audio: true });
-                streamPrueba.getTracks().forEach(t => t.stop()); // Cerramos la prueba inmediatamente
-
+                // Intento de apertura directa
+                streamGlobal = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Si llegamos aquí, tenemos permiso. Listamos dispositivos:
                 const dispositivos = await navigator.mediaDevices.enumerateDevices();
+                const selector = document.getElementById('listaDispositivos');
                 selector.innerHTML = "";
-                
-                const entradasAudio = dispositivos.filter(d => d.kind === 'audioinput');
-                
-                entradasAudio.forEach(d => {
+
+                dispositivos.filter(d => d.kind === 'audioinput').forEach(d => {
                     const opt = document.createElement('option');
                     opt.value = d.deviceId;
-                    opt.text = d.label || `Entrada Desconocida (${d.deviceId.slice(0,5)})`;
+                    opt.text = d.label || `Entrada Bluetooth/Micro (${selector.length + 1})`;
                     selector.appendChild(opt);
                 });
-                
-                document.getElementById('status').innerText = "DISPOSITIVOS CARGADOS";
-                document.getElementById('status').style.color = "#FFD700";
+
+                // Cambiar interfaz
+                document.getElementById('btn-permiso').style.display = 'none';
+                document.getElementById('listaDispositivos').style.display = 'block';
+                document.getElementById('btn-play').style.display = 'block';
+                document.getElementById('display-señal').style.display = 'block';
+                document.getElementById('guia').innerText = "DISPOSITIVO DETECTADO. ELIGE TUS AUDÍFONOS Y DALE A PLAY.";
+
             } catch (err) {
-                alert("Error al acceder a la lista: " + err);
+                alert("EL SISTEMA BLOQUEÓ EL ACCESO.\n\nVe a los ajustes de tu navegador o teléfono y activa el permiso de micrófono para esta página.");
             }
         }
 
-        async function activarAudio() {
-            const deviceId = selector.value;
-            if (!deviceId) return alert("Por favor, selecciona un dispositivo de la lista.");
-
-            // Configuración relajada para evitar el OverconstrainedError
-            const constraints = {
-                audio: {
-                    deviceId: { ideal: deviceId } // Usamos 'ideal' en lugar de 'exact'
-                }
-            };
+        async function activarCanal() {
+            const deviceId = document.getElementById('listaDispositivos').value;
+            
+            // Cerramos cualquier flujo previo antes de abrir el nuevo
+            if (streamGlobal) streamGlobal.getTracks().forEach(t => t.stop());
 
             try {
-                if (aCtx) aCtx.close();
-                aCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                streamLocal = await navigator.mediaDevices.getUserMedia(constraints);
-                const fuente = aCtx.createMediaStreamSource(streamLocal);
-                
-                // Filtro para el Manómetro (Latidos y Ley de Winter)
-                const filtro = aCtx.createBiquadFilter();
-                filtro.type = "lowpass";
-                filtro.frequency.value = 150; 
+                streamGlobal = await navigator.mediaDevices.getUserMedia({
+                    audio: { deviceId: { ideal: deviceId } }
+                });
 
-                const ganancia = aCtx.createGain();
-                ganancia.gain.value = 15.0; // Ganancia máxima para Bluetooth
-
-                analista = aCtx.createAnalyser();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const fuente = audioContext.createMediaStreamSource(streamGlobal);
+                
+                analista = audioContext.createAnalyser();
                 analista.fftSize = 256;
                 dataArray = new Uint8Array(analista.frequencyBinCount);
 
-                fuente.connect(filtro);
-                filtro.connect(ganancia);
-                ganancia.connect(analista);
-                ganancia.connect(aCtx.destination);
+                // Ganancia extrema para sensor Bluetooth
+                const ganancia = audioContext.createGain();
+                ganancia.gain.value = 15.0;
 
-                document.getElementById('status').innerText = "MONITOREANDO...";
-                document.getElementById('status').style.color = "#0f0";
+                fuente.connect(ganancia);
+                ganancia.connect(analista);
+                ganancia.connect(audioContext.destination);
+
+                document.getElementById('btn-play').style.display = 'none';
+                document.getElementById('btn-stop').style.display = 'block';
                 
-                actualizarVumetro();
+                cicloVumetro();
             } catch (err) {
-                console.error(err);
-                alert("Error de conexión: Asegúrate de que los audífonos no estén siendo usados por otra app.");
+                alert("Error al conectar con el sensor: " + err);
             }
         }
 
-        function detenerAudio() {
-            if (streamLocal) streamLocal.getTracks().forEach(t => t.stop());
-            if (aCtx) aCtx.close();
-            document.getElementById('status').innerText = "STOP - SISTEMA DETENIDO";
-            document.getElementById('status').style.color = "#f00";
+        function detenerSistema() {
+            if (streamGlobal) streamGlobal.getTracks().forEach(t => t.stop());
+            if (audioContext) audioContext.close();
+            
+            document.getElementById('btn-play').style.display = 'block';
+            document.getElementById('btn-stop').style.display = 'none';
             document.getElementById('barra').style.width = "0%";
         }
 
-        function actualizarVumetro() {
-            if (aCtx && aCtx.state !== 'closed') {
+        function cicloVumetro() {
+            if (audioContext && audioContext.state !== 'closed') {
                 analista.getByteFrequencyData(dataArray);
                 let promedio = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                document.getElementById('barra').style.width = Math.min(100, (promedio * 3.5)) + "%";
-                requestAnimationFrame(actualizarVumetro);
+                document.getElementById('barra').style.width = Math.min(100, (promedio * 3.8)) + "%";
+                requestAnimationFrame(cicloVumetro);
             }
         }
 
-        // Forzar WakeLock para evitar que el sensor se duerma (Ley de Winter)
-        if ('wakeLock' in navigator) {
-            navigator.wakeLock.request('screen').catch(() => {});
-        }
+        // Obligatorio para el Manómetro: No apagar pantalla
+        if ('wakeLock' in navigator) { navigator.wakeLock.request('screen'); }
     </script>
 </body>
 </html>
